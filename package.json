@@ -1,0 +1,23 @@
+{
+  "name": "plugins-automation",
+  "description": "Automation scripts to manage the 150+ plugins in eliza-plugins organization.",
+  "author": "ElizaOS",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@octokit/rest": "^21.1.1",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "5.8.3"
+  },
+  "scripts": {
+    "start": "node dist/index.js",
+    "package-names": "node dist/packageNames.js",
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  }
+}
