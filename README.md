@@ -18,7 +18,12 @@ This script updates the `name` field in `package.json` for all repositories in t
    npm install
    ```
 
-3. Run the script
+3. Build the project
+   ```bash
+   npm run build
+   ```
+
+4. Run the script
 
    ```bash
    npm run package-names
