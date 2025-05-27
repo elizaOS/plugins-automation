@@ -17,6 +17,7 @@
   "scripts": {
     "start": "node dist/index.js",
     "package-names": "node dist/packageNames.js",
+    "releaseV1": "node dist/releaseV1.js",
     "build": "tsc",
     "clean": "rm -rf dist"
   }
