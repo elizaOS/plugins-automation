@@ -6,6 +6,8 @@ dotenv.config();
 
 const ORG_NAME = "elizaos-plugins";
 const TARGET_BRANCH = "1.x";
+const TEST_MODE = false; // Set to false to run on all repos
+const TEST_REPO = "plugin-knowledge"; // Specific repo to test with
 
 async function main(): Promise<void> {
   const token = process.env.GITHUB_TOKEN;
@@ -16,12 +18,21 @@ async function main(): Promise<void> {
 
   const octokit = new Octokit({ auth: token });
 
+  if (TEST_MODE) {
+    console.log(`🧪 TEST MODE: Only processing repository '${TEST_REPO}'`);
+  }
+
   const repos = await octokit.paginate(octokit.repos.listForOrg, {
     org: ORG_NAME,
     per_page: 100,
   });
 
   for (const repo of repos) {
+    // In test mode, only process the specified test repo
+    if (TEST_MODE && repo.name !== TEST_REPO) {
+      continue;
+    }
+
     let fileData;
 
     // Check if 1.x branch exists, if not skip
@@ -66,43 +77,43 @@ async function main(): Promise<void> {
     const pkg = JSON.parse(raw) as {
       name?: string;
       version?: string;
+      repository?: string | { type: string; url: string };
       [key: string]: any;
     };
-    const oldName = pkg.name;
 
-    // Skip if name is already correct (uses @elizaos/ scope)
-    if (oldName && oldName.startsWith("@elizaos/")) {
+    // Check if repository field needs to be updated
+    const expectedRepositoryUrl = `https://github.com/${ORG_NAME}/${repo.name}.git`;
+    let needsRepositoryUpdate = false;
+
+    if (!pkg.repository) {
+      // No repository field at all
+      needsRepositoryUpdate = true;
+    } else if (typeof pkg.repository === "string") {
+      // Repository is a string - should be an object
+      needsRepositoryUpdate = true;
+    } else if (typeof pkg.repository === "object") {
+      // Repository is an object - check if URL is empty or incorrect
+      if (
+        !pkg.repository.url ||
+        pkg.repository.url === "" ||
+        pkg.repository.url !== expectedRepositoryUrl
+      ) {
+        needsRepositoryUpdate = true;
+      }
+    }
+
+    if (!needsRepositoryUpdate) {
       console.log(
-        `Skipping ${ORG_NAME}/${repo.name} (package name already correct: ${oldName})`
+        `Skipping ${ORG_NAME}/${repo.name} (repository field is already correct)`
       );
       continue;
     }
 
-    // Skip if name exists but doesn't start with @elizaos-plugins/ (and isn't empty)
-    if (oldName && !oldName.startsWith("@elizaos-plugins/")) {
-      console.log(
-        `Skipping ${ORG_NAME}/${repo.name} (package name doesn't match expected pattern: ${oldName})`
-      );
-      continue;
-    }
-
-    // Determine the new name
-    let newName: string;
-    if (!oldName) {
-      // No name field - generate the correct name from repo name
-      newName = `@elizaos/${repo.name}`;
-      console.log(
-        `Adding missing package name for ${ORG_NAME}/${repo.name}: ${newName}`
-      );
-    } else {
-      // Has @elizaos-plugins/ name - convert it
-      newName = oldName.replace(/^@elizaos-plugins\//, "@elizaos/");
-      console.log(
-        `Renaming ${oldName} to ${newName} for ${ORG_NAME}/${repo.name}`
-      );
-    }
-
-    pkg.name = newName;
+    // Add or update the repository URL
+    pkg.repository = {
+      type: "git",
+      url: expectedRepositoryUrl,
+    };
 
     // Bump the version number appropriately
     if (pkg.version) {
@@ -140,13 +151,13 @@ async function main(): Promise<void> {
       repo: repo.name,
       path: "package.json",
       branch: TARGET_BRANCH,
-      message: `chore: rename scope to @elizaos and bump version in package.json`,
+      message: `chore: update repository URL and bump version in package.json`,
       content: updated,
       sha: fileData.sha,
     });
 
     console.log(
-      `Updated package.json in ${ORG_NAME}/${repo.name} on ${TARGET_BRANCH} branch - renamed ${oldName} to ${newName} and bumped version to ${pkg.version}`
+      `Updated repository URL and bumped version in package.json for ${ORG_NAME}/${repo.name} on ${TARGET_BRANCH} branch`
     );
   }
 }

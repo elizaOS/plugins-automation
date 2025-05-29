@@ -18,6 +18,7 @@
     "start": "node dist/index.js",
     "package-names": "node dist/packageNames.js",
     "releaseV1": "node dist/releaseV1.js",
+    "github-urls-json": "node ./dist/githubUrlsJson.js",
     "build": "tsc",
     "clean": "rm -rf dist"
   }
