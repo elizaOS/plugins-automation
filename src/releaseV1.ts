@@ -3,8 +3,12 @@ import fs from "fs";
 import path from "path";
 import process from "process";
 import dotenv from "dotenv";
+import { fileURLToPath } from "url";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const ORG_NAME = "elizaos-plugins";
 const TARGET_BRANCH = "1.x";
@@ -32,7 +36,7 @@ async function main(): Promise<void> {
   // Get all repositories in the organization
   const repos = await octokit.paginate(octokit.repos.listForOrg, {
     org: ORG_NAME,
-    per_page: 100,
+    per_page: 200,
   });
 
   for (const repo of repos) {
@@ -55,15 +59,43 @@ async function main(): Promise<void> {
       throw error;
     }
 
+    // --- new: skip if package.json version is already 1.0.0 ---
     try {
-      // Update package.json dependencies and version
-      await updatePackageJsonDependencies(octokit, repo.name);
+      const resp = await octokit.repos.getContent({
+        owner: ORG_NAME,
+        repo: repo.name,
+        path: "package.json",
+        ref: TARGET_BRANCH,
+      });
+      if (!Array.isArray(resp.data) && "content" in resp.data) {
+        const pkg = JSON.parse(
+          Buffer.from(resp.data.content, "base64").toString("utf8")
+        );
+        if (pkg.version === "1.0.0") {
+          console.log(
+            `Skipping ${ORG_NAME}/${repo.name} (package.json already @ version 1.0.0)`
+          );
+          continue;
+        }
+      }
+    } catch (error: any) {
+      if (error.status !== 404) {
+        throw error;
+      }
+      console.log(
+        `  ⚠️ No package.json in ${repo.name}, proceeding with updates`
+      );
+    }
+
+    try {
+      // Update workflow file last (after all other changes)
+      await updateWorkflowFile(octokit, repo.name, newWorkflowContent);
 
       // Remove bun.lock to force regeneration with updated dependencies
       await removeBunLockfile(octokit, repo.name);
 
-      // Update workflow file last (after all other changes)
-      await updateWorkflowFile(octokit, repo.name, newWorkflowContent);
+      // Update package.json dependencies and version
+      await updatePackageJsonDependencies(octokit, repo.name);
 
       console.log(`✅ Successfully updated ${ORG_NAME}/${repo.name}`);
     } catch (error) {
