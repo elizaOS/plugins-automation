@@ -10,6 +10,7 @@ import ora from 'ora';
 // GitHub configuration
 const ORG_NAME = 'elizaos-plugins';
 const TEMP_DIR = path.join(process.cwd(), 'temp-migration');
+const TEST_MODE = false; // Set to true to process only 1 repository for testing
 
 interface Repository {
   name: string;
@@ -37,8 +38,15 @@ async function main() {
 
     // Check which repos don't have 1.x branch
     spinner.start('Checking for existing 1.x branches...');
-    const reposToMigrate = await filterReposWithout1xBranch(octokit, repos);
-    spinner.succeed(`Found ${reposToMigrate.length} repositories without 1.x branch`);
+    let reposToMigrate = await filterReposWithout1xBranch(octokit, repos);
+    
+    // Apply TEST_MODE filter if enabled
+    if (TEST_MODE && reposToMigrate.length > 0) {
+      reposToMigrate = [reposToMigrate[0]!];
+      spinner.succeed(`Found ${reposToMigrate.length} repository for testing (TEST_MODE enabled)`);
+    } else {
+      spinner.succeed(`Found ${reposToMigrate.length} repositories without 1.x branch`);
+    }
 
     if (reposToMigrate.length === 0) {
       console.log(chalk.green('✅ All repositories already have 1.x branches!'));

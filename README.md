@@ -36,6 +36,7 @@ This script automates the migration of plugins in the `elizaos-plugins` organiza
   5. Pushes the new branch to origin
 - **Error Handling**: Continues processing other repositories if one fails
 - **Cleanup**: Automatically removes temporary directories after processing
+- **Test Mode**: Set `TEST_MODE = true` in the script to process only 1 repository for testing
 
 ### Release V1 - `releaseV1.ts`
 
