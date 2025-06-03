@@ -8,9 +8,14 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "@octokit/rest": "^21.1.1",
-    "dotenv": "^16.5.0"
+    "chalk": "^5.4.1",
+    "dotenv": "^16.5.0",
+    "execa": "^9.6.0",
+    "fs-extra": "^11.3.0",
+    "ora": "^8.2.0"
   },
   "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
     "@types/node": "^22.15.3",
     "typescript": "5.8.3"
   },
