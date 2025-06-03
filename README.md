@@ -22,6 +22,21 @@ The script processes repositories and:
 3. Bumps the version number appropriately (patch increment or beta increment)
 4. Commits the changes with a descriptive message
 
+### Plugin Migration - `migratePlugins.ts`
+
+This script automates the migration of plugins in the `elizaos-plugins` organization from 0.x to 1.x compatibility by:
+
+- **Repository Discovery**: Fetches all repositories from the `elizaos-plugins` GitHub organization
+- **Branch Detection**: Identifies repositories that don't have a `1.x` branch yet
+- **Automated Migration**: For each repository without a 1.x branch:
+  1. Clones the repository locally
+  2. Creates a new `1.x-migrate` branch
+  3. Runs `elizaos plugins upgrade .` to perform the migration
+  4. Commits any changes with the message "feat: migrate to 1.x compatibility"
+  5. Pushes the new branch to origin
+- **Error Handling**: Continues processing other repositories if one fails
+- **Cleanup**: Automatically removes temporary directories after processing
+
 ### Release V1 - `releaseV1.ts`
 
 This script updates all repositories in the `elizaos-plugins` organization that have a `1.x` branch with:
@@ -58,6 +73,17 @@ npm run package-names
 ```bash
 npm run github-urls-json
 ```
+
+#### Plugin Migration
+
+```bash
+npm run migrate-plugins
+```
+
+**Prerequisites for Plugin Migration:**
+- `GITHUB_TOKEN` environment variable with repo permissions
+- `ANTHROPIC_API_KEY` environment variable (required by elizaos plugins upgrade)
+- `elizaos` CLI available globally or via npx
 
 #### Release V1 Update
 
