@@ -53,6 +53,30 @@ The script processes repositories in the following order:
 2. Remove `bun.lock` lockfile
 3. Update GitHub Actions workflow file (last)
 
+### Agent Config Scanner - `agentConfigScan.ts`
+
+This comprehensive script scans all repositories in the `elizaos-plugins` organization to automatically discover and document environment variables:
+
+- **Environment Variable Discovery**: Uses OpenAI GPT-4o to analyze source code, README files, and configuration files to identify all environment variables used in each plugin
+- **agentConfig Updates**: Automatically updates or creates the `agentConfig` section in `package.json` with discovered environment variables, including:
+  - Variable names and types (string, number, boolean)
+  - Descriptions based on code analysis
+  - Required/optional status
+  - Default values when available
+- **README Documentation**: Updates plugin README files with a comprehensive "Environment Variables" section that documents all required and optional variables
+- **Version Bumping**: Automatically increments the patch version of each plugin when changes are made
+- **Branch Detection**: Preferentially works with `1.x` branches when available
+- **Batch Processing**: Processes files in batches to respect API rate limits
+- **Git Integration**: Automatically commits and pushes changes with descriptive commit messages
+
+**Features:**
+- Smart duplicate detection and merging with existing configurations
+- Comprehensive file scanning (TypeScript, JavaScript, Markdown, JSON)  
+- Robust error handling and cleanup
+- Rate limiting for OpenAI API calls
+- Progress indicators with detailed status reporting
+- Test mode for safe development and testing (processes only 1 repository)
+
 ## Usage
 
 ### Prerequisites
@@ -98,3 +122,24 @@ This will:
 - Process all repositories in the `elizaos-plugins` organization with a `1.x` branch
 - Update package versions, dependencies, and workflow files
 - Remove lockfiles to ensure fresh dependency resolution
+
+#### Agent Config Scanner
+
+```bash
+npm run agent-config-scan
+```
+
+This will:
+
+- Scan all repositories in the `elizaos-plugins` organization for environment variables
+- Use OpenAI to analyze code and documentation files
+- Update `agentConfig` sections in `package.json` files with discovered variables
+- Update README files with environment variable documentation
+- Automatically bump package versions and commit changes
+
+**Prerequisites for Agent Config Scanner:**
+- `GITHUB_TOKEN` environment variable with repo permissions
+- `OPENAI_API_KEY` environment variable for LLM analysis
+- Optional: `GIT_USER_NAME` and `GIT_USER_EMAIL` for custom commit attribution
+
+**Test Mode**: Set `TEST_MODE = true` in the script to process only 1 repository for testing

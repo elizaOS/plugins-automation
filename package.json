@@ -12,6 +12,7 @@
     "dotenv": "^16.5.0",
     "execa": "^9.6.0",
     "fs-extra": "^11.3.0",
+    "openai": "^4.66.0",
     "ora": "^8.2.0"
   },
   "devDependencies": {
@@ -25,6 +26,7 @@
     "releaseV1": "node dist/releaseV1.js",
     "github-urls-json": "node ./dist/githubUrlsJson.js",
     "migrate-plugins": "node dist/migratePlugins.js",
+    "agent-config-scan": "node dist/agentConfigScan.js",
     "build": "tsc",
     "clean": "rm -rf dist"
   }
