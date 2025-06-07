@@ -82,24 +82,21 @@ class AgentConfigScanner {
     }
   }
 
-  async checkFor1xBranch(repoName: string): Promise<boolean> {
+  async get1xBranchName(repoName: string): Promise<string | null> {
     try {
       const branches = await this.octokit.rest.repos.listBranches({
         owner: this.org,
         repo: repoName,
       });
 
-      return branches.data.some(
-        (branch) =>
-          branch.name.startsWith("1.") ||
-          branch.name === "1.x" ||
-          branch.name === "v1"
-      );
+      const branch1x = branches.data.find((branch) => branch.name === "1.x");
+
+      return branch1x ? branch1x.name : null;
     } catch (error) {
       console.warn(
         chalk.yellow(`Warning: Could not check branches for ${repoName}`)
       );
-      return false;
+      return null;
     }
   }
 
@@ -154,7 +151,10 @@ class AgentConfigScanner {
     return files;
   }
 
-  async analyzeFileWithLLM(filePath: string): Promise<EnvVariable[]> {
+  async analyzeFileWithLLM(
+    filePath: string,
+    existingConfig?: AgentConfig
+  ): Promise<EnvVariable[]> {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       const fileName = path.basename(filePath);
@@ -164,23 +164,39 @@ class AgentConfigScanner {
         return [];
       }
 
+      // Include existing config context
+      const existingVarsContext = existingConfig?.pluginParameters
+        ? `\n\nEXISTING CONFIGURATION:\nThe package.json already has these environment variables configured:\n${JSON.stringify(
+            existingConfig.pluginParameters,
+            null,
+            2
+          )}\n\nOnly include variables that are NOT already properly configured or need updates.`
+        : "";
+
       const prompt = `
 Analyze this ${fileName} file and identify ALL environment variables that are used or referenced.
 Look for patterns like:
 - process.env.VARIABLE_NAME
 - process.env["VARIABLE_NAME"]
+- runtime.getSetting('VARIABLE_NAME')
+- runtime.getSetting("VARIABLE_NAME")
+- getSetting('VARIABLE_NAME') or getSetting("VARIABLE_NAME")
 - Environment variables mentioned in README files
 - Configuration objects that reference env vars
 - Default values or fallbacks for env vars
 
 For each environment variable found, determine:
-1. The variable name
+1. The variable name (extract from process.env.X, runtime.getSetting('X'), getSetting('X'), etc.)
 2. The data type (string, number, boolean, etc.)
-3. A description of what it's used for
-4. Whether it's required or optional
-5. Any default values
+3. A description of what it's used for based on the code context
+4. Whether it's required or optional (look for error handling, default values, or conditional usage)
+5. Any default values (from fallback assignments, ternary operators, or || operators)
 
-Return ONLY a JSON array of objects with this structure:
+Note: runtime.getSetting() and getSetting() are common patterns for accessing environment variables in plugins.${existingVarsContext}
+
+IMPORTANT: You must return ONLY a valid JSON array. Do not include any explanation or markdown. If no environment variables are found, return an empty array: []
+
+Required JSON format:
 [
   {
     "name": "VARIABLE_NAME",
@@ -198,31 +214,48 @@ ${content}
 `;
 
       const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "o3",
         messages: [
           {
-            role: "system",
-            content:
-              "You are an expert code analyzer. Extract environment variables from code and documentation files. Return only valid JSON.",
-          },
-          {
             role: "user",
-            content: prompt,
+            content: `You are an expert code analyzer. Extract environment variables from code and documentation files. Return only valid JSON.\n\n${prompt}`,
           },
         ],
-        temperature: 0,
-        max_tokens: 2000,
+        max_completion_tokens: 4000,
       });
 
       const responseText = response.choices[0]?.message?.content?.trim();
       if (!responseText) return [];
 
       try {
-        const variables = JSON.parse(responseText);
+        // Try to extract JSON from the response if it's wrapped in markdown or text
+        let jsonText = responseText;
+
+        // Look for JSON array in the response
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          jsonText = jsonMatch[0];
+        }
+
+        const variables = JSON.parse(jsonText);
         return Array.isArray(variables) ? variables : [];
       } catch (parseError) {
+        // If parsing fails, try to find empty array response
+        if (
+          responseText.toLowerCase().includes("no environment variables") ||
+          responseText.toLowerCase().includes("[]") ||
+          responseText.trim() === "[]"
+        ) {
+          return [];
+        }
+
         console.warn(
-          chalk.yellow(`Failed to parse LLM response for ${fileName}`)
+          chalk.yellow(
+            `Failed to parse LLM response for ${fileName}: ${responseText.substring(
+              0,
+              100
+            )}...`
+          )
         );
         return [];
       }
@@ -346,74 +379,39 @@ ${content}
     }
   }
 
-  async updateReadme(repoPath: string, envVars: EnvVariable[]): Promise<void> {
-    const readmePath = path.join(repoPath, "README.md");
+  hasConfigurationChanged(
+    existing: AgentConfig | null,
+    updated: AgentConfig
+  ): boolean {
+    if (!existing) return true;
 
-    if (!(await fs.pathExists(readmePath)) || envVars.length === 0) {
-      return;
+    // Compare the pluginParameters
+    const existingParams = existing.pluginParameters || {};
+    const updatedParams = updated.pluginParameters || {};
+
+    // Check if same number of parameters
+    if (
+      Object.keys(existingParams).length !== Object.keys(updatedParams).length
+    ) {
+      return true;
     }
 
-    try {
-      let content = await fs.readFile(readmePath, "utf-8");
+    // Check each parameter
+    for (const [key, value] of Object.entries(updatedParams)) {
+      const existingValue = existingParams[key];
+      if (!existingValue) return true;
 
-      // Generate environment variables section
-      const envSection = this.generateEnvSection(envVars);
-
-      // Look for existing environment section
-      const envSectionRegex = /## Environment Variables[\s\S]*?(?=##|$)/;
-
-      if (envSectionRegex.test(content)) {
-        // Replace existing section
-        content = content.replace(envSectionRegex, envSection);
-      } else {
-        // Add new section before installation or at the end
-        const installationIndex = content
-          .toLowerCase()
-          .indexOf("## installation");
-        if (installationIndex !== -1) {
-          content =
-            content.slice(0, installationIndex) +
-            envSection +
-            "\n\n" +
-            content.slice(installationIndex);
-        } else {
-          content += "\n\n" + envSection;
-        }
+      if (
+        existingValue.type !== value.type ||
+        existingValue.description !== value.description ||
+        existingValue.required !== value.required ||
+        existingValue.default !== value.default
+      ) {
+        return true;
       }
-
-      await fs.writeFile(readmePath, content);
-    } catch (error) {
-      console.warn(
-        chalk.yellow(
-          `Failed to update README in ${repoPath}: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`
-        )
-      );
-    }
-  }
-
-  generateEnvSection(envVars: EnvVariable[]): string {
-    if (envVars.length === 0) return "";
-
-    let section = "## Environment Variables\n\n";
-    section +=
-      "The following environment variables are required or optional for this plugin:\n\n";
-
-    for (const envVar of envVars) {
-      section += `### ${envVar.name}\n`;
-      section += `- **Type**: ${envVar.type}\n`;
-      section += `- **Description**: ${envVar.description}\n`;
-      section += `- **Required**: ${envVar.required ? "Yes" : "No"}\n`;
-
-      if (envVar.defaultValue) {
-        section += `- **Default**: \`${envVar.defaultValue}\`\n`;
-      }
-
-      section += "\n";
     }
 
-    return section;
+    return false;
   }
 
   async commitChanges(repoPath: string, repoName: string): Promise<boolean> {
@@ -437,11 +435,11 @@ ${content}
       }
 
       // Stage and commit changes
-      execSync("git add package.json README.md", { cwd, stdio: "pipe" });
-      execSync(
-        'git commit -m "chore: update agentConfig, environment variables documentation, and bump version"',
-        { cwd, stdio: "pipe" }
-      );
+      execSync("git add package.json", { cwd, stdio: "pipe" });
+      execSync('git commit -m "chore: update agentConfig and bump version"', {
+        cwd,
+        stdio: "pipe",
+      });
 
       // Push changes
       execSync("git push origin HEAD", { cwd, stdio: "pipe" });
@@ -459,17 +457,20 @@ ${content}
     }
   }
 
-  async processRepository(repoName: string): Promise<void> {
+  async processRepository(repoName: string): Promise<boolean> {
     const spinner = ora(`Processing ${repoName}...`).start();
 
     try {
       // Check for 1.x branch
-      const has1xBranch = await this.checkFor1xBranch(repoName);
-      const branchToUse = has1xBranch ? "1.x" : undefined;
+      const branch1xName = await this.get1xBranchName(repoName);
 
-      if (has1xBranch) {
-        spinner.text = `Processing ${repoName} (1.x branch)...`;
+      if (!branch1xName) {
+        spinner.succeed(`${repoName}: Skipping - no 1.x branch found`);
+        return false;
       }
+
+      const branchToUse = branch1xName;
+      spinner.text = `Processing ${repoName} (${branch1xName} branch)...`;
 
       // Clone repository
       const repoPath = await this.cloneRepository(repoName, branchToUse);
@@ -486,7 +487,7 @@ ${content}
       for (let i = 0; i < files.length; i += 5) {
         const batch = files.slice(i, i + 5);
         const batchPromises = batch.map((file) =>
-          this.analyzeFileWithLLM(file)
+          this.analyzeFileWithLLM(file, currentConfig || undefined)
         );
         const batchResults = await Promise.all(batchPromises);
 
@@ -506,17 +507,26 @@ ${content}
           index === self.findIndex((e) => e.name === envVar.name)
       );
 
-      if (uniqueEnvVars.length === 0) {
-        spinner.succeed(`${repoName}: No environment variables found`);
-        await fs.remove(repoPath);
-        return;
-      }
+              if (uniqueEnvVars.length === 0) {
+          spinner.succeed(`${repoName}: No new environment variables found`);
+          await fs.remove(repoPath);
+          return false;
+        }
 
       // Merge with existing config
       const updatedConfig = this.mergeEnvVariables(
         currentConfig,
         uniqueEnvVars
       );
+
+              // Check if configuration actually changed
+        if (!this.hasConfigurationChanged(currentConfig, updatedConfig)) {
+          spinner.succeed(
+            `${repoName}: No changes needed - configuration is up to date`
+          );
+          await fs.remove(repoPath);
+          return false;
+        }
 
       // Get version info before update
       const oldPackageJson = await this.getCurrentPackageJson(repoPath);
@@ -531,9 +541,6 @@ ${content}
       // Get new version info
       const newPackageJson = await this.getCurrentPackageJson(repoPath);
       const newVersion = newPackageJson?.version || "unknown";
-
-      // Update README
-      await this.updateReadme(repoPath, uniqueEnvVars);
 
       // Commit changes
       const committed = await this.commitChanges(repoPath, repoName);
@@ -558,6 +565,7 @@ ${content}
 
       // Cleanup
       await fs.remove(repoPath);
+      return true;
     } catch (error) {
       spinner.fail(
         `${repoName}: ${
@@ -570,6 +578,7 @@ ${content}
       if (await fs.pathExists(repoPath)) {
         await fs.remove(repoPath);
       }
+      return false;
     }
   }
 
@@ -590,23 +599,51 @@ ${content}
       // Get all repositories
       const repositories = await this.getRepositories();
 
-      // Apply test mode if enabled
-      const reposToProcess = this.TEST_MODE ? repositories.slice(0, 1) : repositories;
-      
-      if (this.TEST_MODE) {
-        console.log(chalk.yellow("🧪 TEST MODE: Processing only 1 repository\n"));
+      // Filter out repositories we don't want to process
+      const filteredRepos = repositories.filter((repo) => repo !== "registry");
+
+      if (repositories.length !== filteredRepos.length) {
+        console.log(
+          chalk.gray(
+            `Filtered out ${
+              repositories.length - filteredRepos.length
+            } repositories (registry)`
+          )
+        );
       }
 
-      console.log(
-        chalk.gray(`Processing ${reposToProcess.length} repositories...\n`)
-      );
+      if (this.TEST_MODE) {
+        console.log(
+          chalk.yellow("🧪 TEST MODE: Processing until 1 repository is actually processed\n")
+        );
+        
+        // In test mode, keep trying until we find a repo that gets processed
+        let processed = false;
+        for (const repo of filteredRepos) {
+          const result = await this.processRepository(repo);
+          if (result) {
+            processed = true;
+            break;
+          }
+          // Small delay before trying next repository
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        
+        if (!processed) {
+          console.log(chalk.yellow("No repositories were processed in test mode"));
+        }
+      } else {
+        console.log(
+          chalk.gray(`Processing ${filteredRepos.length} repositories...\n`)
+        );
 
-      // Process repositories one by one to avoid overwhelming the APIs
-      for (const repo of reposToProcess) {
-        await this.processRepository(repo);
+        // Process repositories one by one to avoid overwhelming the APIs
+        for (const repo of filteredRepos) {
+          await this.processRepository(repo);
 
-        // Small delay between repositories
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+          // Small delay between repositories
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       }
 
       console.log(chalk.green("\n✅ Scan completed!"));

@@ -63,9 +63,10 @@ This comprehensive script scans all repositories in the `elizaos-plugins` organi
   - Descriptions based on code analysis
   - Required/optional status
   - Default values when available
-- **README Documentation**: Updates plugin README files with a comprehensive "Environment Variables" section that documents all required and optional variables
+
 - **Version Bumping**: Automatically increments the patch version of each plugin when changes are made
-- **Branch Detection**: Preferentially works with `1.x` branches when available
+- **Branch Detection**: Only processes repositories that have exactly a `1.x` branch
+- **Repository Filtering**: Automatically excludes non-plugin repositories (e.g., registry)
 - **Batch Processing**: Processes files in batches to respect API rate limits
 - **Git Integration**: Automatically commits and pushes changes with descriptive commit messages
 
@@ -134,7 +135,6 @@ This will:
 - Scan all repositories in the `elizaos-plugins` organization for environment variables
 - Use OpenAI to analyze code and documentation files
 - Update `agentConfig` sections in `package.json` files with discovered variables
-- Update README files with environment variable documentation
 - Automatically bump package versions and commit changes
 
 **Prerequisites for Agent Config Scanner:**
