@@ -158,6 +158,9 @@ class AgentConfigScanner {
     try {
       const content = await fs.readFile(filePath, "utf-8");
       const fileName = path.basename(filePath);
+      const relativePath = path.relative(process.cwd(), filePath);
+      
+      console.log(chalk.dim(`    🔍 Analyzing: ${relativePath}`));
 
       // Skip very large files
       if (content.length > 50000) {
@@ -483,35 +486,49 @@ ${content}
 
       const allEnvVars: EnvVariable[] = [];
 
-      // Analyze files with LLM (in batches to avoid rate limits)
-      for (let i = 0; i < files.length; i += 5) {
-        const batch = files.slice(i, i + 5);
-        const batchPromises = batch.map((file) =>
-          this.analyzeFileWithLLM(file, currentConfig || undefined)
+              // Analyze files with LLM (in batches to avoid rate limits)
+        console.log(chalk.blue(`  📁 Found ${files.length} files to analyze`));
+        
+        for (let i = 0; i < files.length; i += 5) {
+          const batch = files.slice(i, i + 5);
+          const batchNum = Math.floor(i / 5) + 1;
+          const totalBatches = Math.ceil(files.length / 5);
+          
+          spinner.text = `Processing ${repoName} - Batch ${batchNum}/${totalBatches} (${batch.length} files)`;
+          
+          console.log(chalk.cyan(`  🤖 LLM Batch ${batchNum}/${totalBatches}:`));
+          
+          const batchPromises = batch.map((file) =>
+            this.analyzeFileWithLLM(file, currentConfig || undefined)
+          );
+          const batchResults = await Promise.all(batchPromises);
+
+          for (const result of batchResults) {
+            allEnvVars.push(...result);
+          }
+
+          // Small delay to respect rate limits
+          if (i + 5 < files.length) {
+            console.log(chalk.gray(`  ⏳ Waiting 1s to respect API rate limits...`));
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+
+              // Remove duplicates
+        const uniqueEnvVars = allEnvVars.filter(
+          (envVar, index, self) =>
+            index === self.findIndex((e) => e.name === envVar.name)
         );
-        const batchResults = await Promise.all(batchPromises);
 
-        for (const result of batchResults) {
-          allEnvVars.push(...result);
-        }
+        console.log(chalk.green(`  ✨ Analysis complete! Found ${allEnvVars.length} total variables, ${uniqueEnvVars.length} unique`));
 
-        // Small delay to respect rate limits
-        if (i + 5 < files.length) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-        }
-      }
-
-      // Remove duplicates
-      const uniqueEnvVars = allEnvVars.filter(
-        (envVar, index, self) =>
-          index === self.findIndex((e) => e.name === envVar.name)
-      );
-
-              if (uniqueEnvVars.length === 0) {
+        if (uniqueEnvVars.length === 0) {
           spinner.succeed(`${repoName}: No new environment variables found`);
           await fs.remove(repoPath);
           return false;
         }
+
+        console.log(chalk.yellow(`  🔧 Discovered variables: ${uniqueEnvVars.map(v => v.name).join(', ')}`));
 
       // Merge with existing config
       const updatedConfig = this.mergeEnvVariables(
@@ -532,18 +549,22 @@ ${content}
       const oldPackageJson = await this.getCurrentPackageJson(repoPath);
       const oldVersion = oldPackageJson?.version || "unknown";
 
-      // Update package.json
-      const packageUpdated = await this.updatePackageJson(
-        repoPath,
-        updatedConfig
-      );
+              // Update package.json
+        console.log(chalk.blue(`  📝 Updating package.json...`));
+        const packageUpdated = await this.updatePackageJson(
+          repoPath,
+          updatedConfig
+        );
 
-      // Get new version info
-      const newPackageJson = await this.getCurrentPackageJson(repoPath);
-      const newVersion = newPackageJson?.version || "unknown";
+        // Get new version info
+        const newPackageJson = await this.getCurrentPackageJson(repoPath);
+        const newVersion = newPackageJson?.version || "unknown";
 
-      // Commit changes
-      const committed = await this.commitChanges(repoPath, repoName);
+        console.log(chalk.magenta(`  📦 Version: ${oldVersion} → ${newVersion}`));
+        console.log(chalk.blue(`  🚀 Committing and pushing changes...`));
+        
+        // Commit changes
+        const committed = await this.commitChanges(repoPath, repoName);
 
       const envVarNames = uniqueEnvVars.map((v) => v.name).join(", ");
       const versionInfo =
