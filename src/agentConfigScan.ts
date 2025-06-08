@@ -16,6 +16,7 @@ interface EnvVariable {
   description: string;
   required?: boolean;
   defaultValue?: string;
+  sensitive?: boolean;
 }
 
 interface AgentConfig {
@@ -27,6 +28,7 @@ interface AgentConfig {
       description: string;
       required?: boolean;
       default?: string;
+      sensitive?: boolean;
     }
   >;
 }
@@ -36,7 +38,8 @@ class AgentConfigScanner {
   private openai: OpenAI;
   private org = "elizaos-plugins";
   private tempDir = "./temp-repos";
-  private readonly TEST_MODE = true; // Set to true to process only 1 repository for testing
+  private readonly TEST_MODE = false; // Set to true to process only 1 repository for testing
+  private readonly TARGET_REPO = ""; // Set to a specific repo name to target only that repo (e.g., "plugin-twitter")
 
   constructor() {
     const githubToken = process.env.GITHUB_TOKEN;
@@ -125,7 +128,7 @@ class AgentConfigScanner {
 
   async scanFilesForEnvVars(repoPath: string): Promise<string[]> {
     const files: string[] = [];
-    const extensions = [".ts", ".js", ".tsx", ".jsx", ".md", ".json"];
+    const extensions = [".ts", ".js", ".tsx", ".jsx"];
 
     async function walkDir(dir: string) {
       const items = await fs.readdir(dir);
@@ -194,6 +197,7 @@ For each environment variable found, determine:
 3. A description of what it's used for based on the code context
 4. Whether it's required or optional (look for error handling, default values, or conditional usage)
 5. Any default values (from fallback assignments, ternary operators, or || operators)
+6. Whether it's sensitive/secret data (API keys, passwords, tokens, private keys, secrets, credentials, etc.)
 
 Note: runtime.getSetting() and getSetting() are common patterns for accessing environment variables in plugins.${existingVarsContext}
 
@@ -206,7 +210,8 @@ Required JSON format:
     "type": "string|number|boolean",
     "description": "What this variable is used for",
     "required": true|false,
-    "defaultValue": "default value if any"
+    "defaultValue": "default value if any",
+    "sensitive": true|false
   }
 ]
 
@@ -310,33 +315,62 @@ ${content}
     discovered: EnvVariable[]
   ): AgentConfig {
     const baseConfig: AgentConfig = {
-      pluginType: "elizaos:plugin:1.0.0",
+      pluginType: existing?.pluginType || "elizaos:plugin:1.0.0",
       pluginParameters: {},
     };
 
-    // Start with existing config if available
-    if (existing) {
-      baseConfig.pluginType = existing.pluginType;
-      baseConfig.pluginParameters = { ...existing.pluginParameters };
-    }
+    // Track changes for logging
+    const existingVars = new Set(Object.keys(existing?.pluginParameters || {}));
+    const discoveredVars = new Set(discovered.map(v => v.name));
+    const removedVars = [...existingVars].filter(v => !discoveredVars.has(v));
+    const addedVars = [...discoveredVars].filter(v => !existingVars.has(v));
+    const updatedVars: string[] = [];
 
-    // Add discovered variables
+    // Build fresh config from discovered variables only
+    // This will update existing entries and remove unused ones
     for (const envVar of discovered) {
-      if (!baseConfig.pluginParameters[envVar.name]) {
-        baseConfig.pluginParameters[envVar.name] = {
-          type: envVar.type,
-          description: envVar.description,
-        };
-
-        if (envVar.required !== undefined) {
-          baseConfig.pluginParameters[envVar.name]!.required = envVar.required;
-        }
-
-        if (envVar.defaultValue) {
-          baseConfig.pluginParameters[envVar.name]!.default =
-            envVar.defaultValue;
+      // Check if this is an update to an existing variable
+      const existingVar = existing?.pluginParameters?.[envVar.name];
+      if (existingVar) {
+        const hasChanges = 
+          existingVar.type !== envVar.type ||
+          existingVar.description !== envVar.description ||
+          existingVar.required !== envVar.required ||
+          existingVar.default !== envVar.defaultValue ||
+          existingVar.sensitive !== envVar.sensitive;
+        
+        if (hasChanges) {
+          updatedVars.push(envVar.name);
         }
       }
+
+      baseConfig.pluginParameters[envVar.name] = {
+        type: envVar.type,
+        description: envVar.description,
+      };
+
+      if (envVar.required !== undefined) {
+        baseConfig.pluginParameters[envVar.name]!.required = envVar.required;
+      }
+
+      if (envVar.defaultValue) {
+        baseConfig.pluginParameters[envVar.name]!.default = envVar.defaultValue;
+      }
+
+      if (envVar.sensitive !== undefined) {
+        baseConfig.pluginParameters[envVar.name]!.sensitive = envVar.sensitive;
+      }
+    }
+
+    // Log changes
+    if (addedVars.length > 0) {
+      console.log(chalk.green(`  ➕ Added variables: ${addedVars.join(', ')}`));
+    }
+    if (updatedVars.length > 0) {
+      console.log(chalk.yellow(`  🔄 Updated variables: ${updatedVars.join(', ')}`));
+    }
+    if (removedVars.length > 0) {
+      console.log(chalk.red(`  ➖ Removed variables: ${removedVars.join(', ')}`));
     }
 
     return baseConfig;
@@ -408,7 +442,8 @@ ${content}
         existingValue.type !== value.type ||
         existingValue.description !== value.description ||
         existingValue.required !== value.required ||
-        existingValue.default !== value.default
+        existingValue.default !== value.default ||
+        existingValue.sensitive !== value.sensitive
       ) {
         return true;
       }
@@ -621,9 +656,26 @@ ${content}
       const repositories = await this.getRepositories();
 
       // Filter out repositories we don't want to process
-      const filteredRepos = repositories.filter((repo) => repo !== "registry");
+      let filteredRepos = repositories.filter((repo) => repo !== "registry");
 
-      if (repositories.length !== filteredRepos.length) {
+      // If TARGET_REPO is specified, only process that repository
+      if (this.TARGET_REPO) {
+        const targetExists = filteredRepos.includes(this.TARGET_REPO);
+        if (targetExists) {
+          filteredRepos = [this.TARGET_REPO];
+          console.log(
+            chalk.blue(`🎯 Targeting specific repository: ${this.TARGET_REPO}`)
+          );
+        } else {
+          console.log(
+            chalk.red(`❌ Target repository "${this.TARGET_REPO}" not found!`)
+          );
+          console.log(
+            chalk.gray(`Available repositories: ${filteredRepos.join(", ")}`)
+          );
+          return;
+        }
+      } else if (repositories.length !== filteredRepos.length) {
         console.log(
           chalk.gray(
             `Filtered out ${
@@ -633,7 +685,7 @@ ${content}
         );
       }
 
-      if (this.TEST_MODE) {
+      if (this.TEST_MODE && !this.TARGET_REPO) {
         console.log(
           chalk.yellow("🧪 TEST MODE: Processing until 1 repository is actually processed\n")
         );
@@ -654,16 +706,21 @@ ${content}
           console.log(chalk.yellow("No repositories were processed in test mode"));
         }
       } else {
+        const modeInfo = this.TARGET_REPO 
+          ? `target repository (${this.TARGET_REPO})`
+          : `${filteredRepos.length} repositories`;
+        
         console.log(
-          chalk.gray(`Processing ${filteredRepos.length} repositories...\n`)
+          chalk.gray(`Processing ${modeInfo}...\n`)
         );
 
         // Process repositories one by one to avoid overwhelming the APIs
         for (const repo of filteredRepos) {
           await this.processRepository(repo);
 
-          // Small delay between repositories
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          // Small delay between repositories (shorter for single repo)
+          const delay = this.TARGET_REPO ? 500 : 2000;
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
 
