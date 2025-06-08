@@ -557,13 +557,9 @@ ${content}
 
         console.log(chalk.green(`  ✨ Analysis complete! Found ${allEnvVars.length} total variables, ${uniqueEnvVars.length} unique`));
 
-        if (uniqueEnvVars.length === 0) {
-          spinner.succeed(`${repoName}: No new environment variables found`);
-          await fs.remove(repoPath);
-          return false;
+        if (uniqueEnvVars.length > 0) {
+          console.log(chalk.yellow(`  🔧 Discovered variables: ${uniqueEnvVars.map(v => v.name).join(', ')}`));
         }
-
-        console.log(chalk.yellow(`  🔧 Discovered variables: ${uniqueEnvVars.map(v => v.name).join(', ')}`));
 
       // Merge with existing config
       const updatedConfig = this.mergeEnvVariables(
@@ -601,7 +597,9 @@ ${content}
         // Commit changes
         const committed = await this.commitChanges(repoPath, repoName);
 
-      const envVarNames = uniqueEnvVars.map((v) => v.name).join(", ");
+      const envVarNames = uniqueEnvVars.length > 0 
+        ? uniqueEnvVars.map((v) => v.name).join(", ")
+        : "configuration cleanup";
       const versionInfo =
         oldVersion !== newVersion ? ` (${oldVersion} → ${newVersion})` : "";
 
@@ -615,7 +613,7 @@ ${content}
         );
       } else {
         spinner.warn(
-          `${repoName}: Found env vars but couldn't update (${envVarNames})`
+          `${repoName}: Configuration changed but couldn't update (${envVarNames})`
         );
       }
 
