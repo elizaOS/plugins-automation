@@ -78,6 +78,35 @@ This comprehensive script scans all repositories in the `elizaos-plugins` organi
 - Progress indicators with detailed status reporting
 - Test mode for safe development and testing (processes only 1 repository)
 
+### NPM Download Statistics - `npmDownloadStats.ts`
+
+This script generates comprehensive download statistics for all packages in the @elizaos npm organization and exports the data to a professional Excel report:
+
+- **Package Discovery**: Searches both `@elizaos` and `@elizaos-plugins` npm organizations to find all published packages
+- **Download Analytics**: Collects weekly, monthly, and yearly download statistics for each package
+- **Package Metadata**: Gathers comprehensive information including descriptions, versions, repositories, maintainers, keywords, and licenses
+- **Version Analysis**: Provides estimated download statistics for recent versions of each package
+- **Excel Generation**: Creates a multi-sheet Excel document with detailed analytics and summaries
+
+**Excel Report Structure:**
+- **Package Overview**: Complete package details with download counts and metadata
+- **Package Downloads**: Download statistics broken down by time periods (weekly/monthly/yearly)
+- **Version Downloads**: Estimated downloads for the most recent versions of each package
+- **Summary**: Key metrics, totals, and top-performing packages
+
+**Sample Results:**
+The script currently discovers 178+ packages across the ElizaOS ecosystem with metrics like:
+- 1.25M+ total yearly downloads
+- 78K+ weekly downloads
+- Top package: `@elizaos/core` with 211K+ yearly downloads
+
+**Features:**
+- Automated package discovery across multiple npm organizations
+- Rate-limited API calls to respect npm registry limits
+- Robust error handling with fallback for missing data
+- Progress indicators and detailed console output
+- Professional Excel formatting with multiple analysis sheets
+
 ## Usage
 
 ### Prerequisites
@@ -143,3 +172,19 @@ This will:
 - Optional: `GIT_USER_NAME` and `GIT_USER_EMAIL` for custom commit attribution
 
 **Test Mode**: Set `TEST_MODE = true` in the script to process only 1 repository for testing
+
+#### NPM Download Statistics
+
+```bash
+npm run npm-download-stats
+```
+
+This will:
+
+- Search for all packages in both `@elizaos` and `@elizaos-plugins` npm organizations
+- Collect comprehensive download statistics (weekly, monthly, yearly) for each package
+- Gather package metadata including descriptions, versions, and maintainers
+- Generate a professional Excel report with multiple analysis sheets
+- Save the report as `assets/elizaos-npm-download-stats.xlsx`
+
+**No prerequisites required** - this script only reads public npm registry data
