@@ -170,26 +170,34 @@ class AgentConfigScanner {
         return [];
       }
 
-      // Include existing config context
+      // Include existing config context for reference only
       const existingVarsContext = existingConfig?.pluginParameters
-        ? `\n\nEXISTING CONFIGURATION:\nThe package.json already has these environment variables configured:\n${JSON.stringify(
+        ? `\n\nEXISTING CONFIGURATION REFERENCE:\nThe package.json currently has these environment variables configured:\n${JSON.stringify(
             existingConfig.pluginParameters,
             null,
             2
-          )}\n\nOnly include variables that are NOT already properly configured or need updates.`
+          )}\n\nIMPORTANT: Return ALL environment variables found in the code, regardless of whether they exist in the current configuration. The existing configuration is just for reference.`
         : "";
 
       const prompt = `
 Analyze this ${fileName} file and identify ALL environment variables that are used or referenced.
+
+CRITICAL: Find and return EVERY environment variable used in this code, even if you think it might be configured elsewhere.
+
 Look for patterns like:
 - process.env.VARIABLE_NAME
 - process.env["VARIABLE_NAME"]
 - runtime.getSetting('VARIABLE_NAME')
 - runtime.getSetting("VARIABLE_NAME")
 - getSetting('VARIABLE_NAME') or getSetting("VARIABLE_NAME")
-- Environment variables mentioned in README files
+- settings.VARIABLE_NAME
+- config.VARIABLE_NAME
+- Environment variables in import statements or constants
+- Variables used in conditionals like "if (process.env.X)"
+- Variables in template strings like \`\${process.env.X}\`
 - Configuration objects that reference env vars
 - Default values or fallbacks for env vars
+- Variables mentioned in comments or documentation
 
 For each environment variable found, determine:
 1. The variable name (extract from process.env.X, runtime.getSetting('X'), getSetting('X'), etc.)
