@@ -8,12 +8,14 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "@octokit/rest": "^21.1.1",
+    "axios": "^1.7.2",
     "chalk": "^5.4.1",
     "dotenv": "^16.5.0",
     "execa": "^9.6.0",
     "fs-extra": "^11.3.0",
     "openai": "^4.66.0",
-    "ora": "^8.2.0"
+    "ora": "^8.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/fs-extra": "^11.0.4",
@@ -27,6 +29,7 @@
     "github-urls-json": "node ./dist/githubUrlsJson.js",
     "migrate-plugins": "node dist/migratePlugins.js",
     "agent-config-scan": "node dist/agentConfigScan.js",
+    "npm-download-stats": "node dist/npmDownloadStats.js",
     "build": "tsc",
     "clean": "rm -rf dist"
   }
