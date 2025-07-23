@@ -30,6 +30,9 @@
     "migrate-plugins": "node dist/migratePlugins.js",
     "agent-config-scan": "node dist/agentConfigScan.js",
     "npm-download-stats": "node dist/npmDownloadStats.js",
+    "generate-readmes": "node dist/generateReadmes.js",
+    "generate-readmes:test": "node dist/generateReadmes.js --test",
+    "generate-readmes:local": "node dist/generateReadmes.js --local",
     "build": "tsc",
     "clean": "rm -rf dist"
   }
