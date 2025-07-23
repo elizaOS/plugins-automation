@@ -188,3 +188,58 @@ This will:
 - Save the report as `assets/elizaos-npm-download-stats.xlsx`
 
 **No prerequisites required** - this script only reads public npm registry data
+
+### Generate READMEs - `generateReadmes.ts`
+
+This script automatically generates comprehensive README documentation for all plugins in the `elizaos-plugins` organization:
+
+- **Plugin Discovery**: Automatically finds all plugin repositories (those starting with `plugin-`) in the GitHub organization
+- **Code Analysis**: Extracts plugin information including:
+  - Actions, services, and providers with their descriptions
+  - Environment variables used throughout the codebase
+  - Dependencies and package metadata
+  - Parameter types and usage examples
+- **AI Enhancement**: Uses OpenAI GPT-4o to generate detailed, well-structured README files that include:
+  - Installation instructions
+  - Configuration guides with all environment variables
+  - Usage examples for each action
+  - API documentation for services and providers
+  - Development and testing instructions
+- **Content Preservation**: When updating existing READMEs, the script preserves all custom sections like "Future Enhancements", "Credits", and "Security Best Practices"
+- **Pull Request Creation**: Automatically creates pull requests with the updated documentation
+
+**Features:**
+- Template-based generation with AI enhancement for better descriptions
+- Intelligent merging of existing content with new documentation
+- Source code analysis to extract accurate component information
+- Support for both local and remote repository processing
+- Test mode for safe development (`--test` flag)
+- Local mode for processing without GitHub operations (`--local` flag)
+
+#### Generate READMEs Usage
+
+```bash
+# Generate READMEs for all plugins
+npm run generate-readmes
+
+# Test mode - process only one plugin
+npm run generate-readmes:test
+
+# Local mode - process local plugins without creating PRs
+npm run generate-readmes:local
+
+# Process a specific repository in test mode
+npm run generate-readmes:test -- --repo=plugin-example
+```
+
+**Prerequisites for Generate READMEs:**
+- `GITHUB_TOKEN` environment variable with repo permissions (for remote operations)
+- `OPENAI_API_KEY` environment variable for AI-enhanced documentation generation
+- README template file at `assets/readme-template.md`
+
+The script will:
+- Clone each plugin repository (or use local copies in local mode)
+- Analyze the codebase to extract plugin components and functionality
+- Generate comprehensive documentation using AI assistance
+- Create pull requests with the updated README files
+- Clean up temporary files after processing

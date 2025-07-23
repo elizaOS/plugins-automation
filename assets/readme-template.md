@@ -39,7 +39,7 @@ const character = {
 ## 📋 Prerequisites
 
 - [elizaOS](https://github.com/elizaos/eliza) v1.0.0 or higher
-- Node.js 23+ or Bun
+- Node.js 23+ and Bun
 - Required API credentials (see Configuration)
 
 ## 🔧 Configuration
