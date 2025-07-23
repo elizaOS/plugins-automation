@@ -39,7 +39,7 @@ class AgentConfigScanner {
   private org = "elizaos-plugins";
   private tempDir = "./temp-repos";
   private readonly TEST_MODE = false; // Set to true to process only 1 repository for testing
-  private readonly TARGET_REPO = ""; // Set to a specific repo name to target only that repo (e.g., "plugin-twitter")
+  private readonly TARGET_REPO = ""; // Set to a specific repo name to target only that repo (e.g., "plugin-farcaster")
 
   constructor() {
     const githubToken = process.env.GITHUB_TOKEN;
